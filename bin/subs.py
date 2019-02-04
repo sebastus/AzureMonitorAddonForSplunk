@@ -212,7 +212,7 @@ def get_resources(ew, bearer_token, sub_url, resource_group_name=None):
     return value
 
 
-def get_requested_metrics(resource):
+def get_requested_metrics(resource, input_config_dict):
     """
         given a resource dict, see what metrics are requested by examining tags
     """
@@ -225,8 +225,15 @@ def get_requested_metrics(resource):
     if len(tags) == 0:
         return None
 
-    # if no metrics tag, skip it
-    metrics_tag = tags.get('Metrics', tags.get('metrics', None))
+    # retrieve tag configuration
+    tag_key = input_config_dict.get("metrics_tag_key") or 'Metrics'
+    ignore_tag_value = input_config_dict.get("ignore_tag_value") or False
+
+    # check for presence of defined tag key in config or default Metrics tag key.
+    # HACK: checking for lowercase version of tag key as vertain Azure API versions have a bug for services like EventHub, where tag keys are returned on lowercase
+    metrics_tag = tags.get(tag_key, tags.get(tag_key.lower(), None))
+    
+    # if no tags, skip it.
     if metrics_tag is None:
         return None
 
@@ -234,7 +241,7 @@ def get_requested_metrics(resource):
         return None
 
     set_of_requested_metrics = set()
-    if metrics_tag == '*':
+    if metrics_tag == '*' or ignore_tag_value:
         metrics_tag = ALL_AVAILABLE_METRICS
     set_of_entered_metrics = set(metrics_tag.split(','))
     for metric in set_of_entered_metrics:
@@ -289,7 +296,6 @@ def get_index_resource_metrics(ew, bearer_token, sub_url, resource_rq, input_sou
         ew.log('ERROR', 'get_index_resource_metrics area 1: {0}'.format(e))
 
     for metric in list_of_metrics:
-
         resource_id = metric['id'].upper()
 
         re_sub = re.compile(r"SUBSCRIPTIONS\/(.*?)\/")
@@ -405,14 +411,17 @@ def get_index_resource_metrics(ew, bearer_token, sub_url, resource_rq, input_sou
 
 
 def get_metrics_for_resources(ew, bearer_token, sub_url,
-                              resource_group_name, resources, input_sourcetype, checkpoint_dict):
+                              resource_group_name, resources, input_config_dict, checkpoint_dict):
     """
         resources is a list of dict, where the dict is the resource details with
         name, type, id, tags, etc.
     """
+
+    input_sourcetype = input_config_dict.get("input_sourcetype")
+
     list_of_requested_metrics = []
     for resource in resources:
-        set_of_requested_metrics = get_requested_metrics(resource)
+        set_of_requested_metrics = get_requested_metrics(resource, input_config_dict)
 
         if set_of_requested_metrics is None:
             continue
@@ -504,7 +513,7 @@ def get_metrics_to_get(ew, bearer_token, sub_url,
         ew.log(
             'ERROR', 'get_metrics_to_get: Error returned from get_arm: {0}'.format(e))
         value = []
-
+    
     return value
 
 
